@@ -2,413 +2,273 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#667eea">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Social Climber">
     <link rel="manifest" href="manifest.json">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23667eea' width='192' height='192'/><text x='96' y='120' font-size='100' text-anchor='middle' fill='white' font-family='Arial'>🧗</text></svg>">
-    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect fill='%23667eea' width='180' height='180'/><text x='90' y='135' font-size='90' text-anchor='middle' fill='white' font-family='Arial'>🧗</text></svg>">
     <title>🧗 Social Climber</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-            width: 100%;
-            height: 100vh;
-            overflow: hidden;
-            background: #000;
-        }
-        #root {
-            width: 100%;
-            height: 100%;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial; width: 100%; height: 100vh; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100%; height: 100%; }
+        #menu { position: absolute; width: 100%; height: 100%; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; padding: 20px; z-index: 10; }
+        #menu h1 { font-size: 48px; margin-bottom: 20px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+        #menu p { font-size: 16px; margin-bottom: 30px; opacity: 0.9; }
+        .avatar-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px; max-width: 350px; width: 100%; }
+        .avatar-btn { padding: 15px; font-size: 16px; border: 3px solid white; border-radius: 12px; color: white; cursor: pointer; font-weight: bold; background: rgba(255,255,255,0.2); transition: transform 0.2s; }
+        .avatar-btn:active { transform: scale(0.95); }
+        #hud { position: absolute; top: 20px; left: 20px; color: white; font-size: 24px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); z-index: 5; }
+        #back-btn { position: absolute; top: 20px; right: 20px; padding: 12px 20px; font-size: 16px; background: rgba(255,107,107,0.8); border: 2px solid white; border-radius: 8px; color: white; cursor: pointer; font-weight: bold; z-index: 5; display: none; }
     </style>
 </head>
 <body>
-    <div id="root"></div>
+    <div id="menu">
+        <h1>🧗 Social Climber</h1>
+        <p>Pick your avatar and climb!</p>
+        <div class="avatar-grid">
+            <button class="avatar-btn" onclick="startGame('monkey')">🐵 Monkey</button>
+            <button class="avatar-btn" onclick="startGame('cat')">🐱 Cat</button>
+            <button class="avatar-btn" onclick="startGame('dog')">🐶 Dog</button>
+            <button class="avatar-btn" onclick="startGame('cheetah')">🐆 Cheetah</button>
+        </div>
+        <p style="font-size: 14px; opacity: 0.8;">👆 Tap and hold to climb faster!</p>
+    </div>
 
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@r128/build/three.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <canvas id="gameCanvas"></canvas>
+    <div id="hud">
+        <div>💰 Score: <span id="score">0</span></div>
+        <div style="margin-top: 10px; font-size: 18px;">
+            📈 Height: <span id="height">0</span>m<br>
+            🏆 Max: <span id="maxHeight">0</span>m
+        </div>
+    </div>
+    <button id="back-btn" onclick="goBack()">Back</button>
 
     <script>
-        // Service Worker Registration
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js').catch(err => {
-                console.log('SW registration failed:', err);
+            navigator.serviceWorker.register('sw.js').catch(err => console.log('SW:', err));
+        }
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const menu = document.getElementById('menu');
+        const hud = document.getElementById('hud');
+        const backBtn = document.getElementById('back-btn');
+        const scoreEl = document.getElementById('score');
+        const heightEl = document.getElementById('height');
+        const maxHeightEl = document.getElementById('maxHeight');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let gameStarted = false;
+        let score = 0;
+        let currentHeight = 0;
+        let maxHeight = 0;
+        let isClimbing = false;
+        let avatarY = 0;
+        let avatarVelocity = 0;
+
+        const avatars = {
+            monkey: { color: '#d4a574', speed: 0.12, name: '🐵' },
+            cat: { color: '#ffa500', speed: 0.08, name: '🐱' },
+            dog: { color: '#8b4513', speed: 0.10, name: '🐶' },
+            cheetah: { color: '#ffcc00', speed: 0.16, name: '🐆' }
+        };
+
+        let currentAvatar = null;
+        let coins = [];
+        let particles = [];
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        canvas.addEventListener('pointerdown', () => { isClimbing = true; });
+        canvas.addEventListener('pointerup', () => { isClimbing = false; });
+        canvas.addEventListener('touchstart', () => { isClimbing = true; });
+        canvas.addEventListener('touchend', () => { isClimbing = false; });
+
+        function startGame(avatar) {
+            gameStarted = true;
+            currentAvatar = avatar;
+            menu.style.display = 'none';
+            hud.style.display = 'block';
+            backBtn.style.display = 'block';
+            score = 0;
+            currentHeight = 0;
+            maxHeight = 0;
+            avatarY = canvas.height / 2;
+            avatarVelocity = 0;
+            coins = spawnCoins();
+            animate();
+        }
+
+        function goBack() {
+            gameStarted = false;
+            menu.style.display = 'flex';
+            hud.style.display = 'none';
+            backBtn.style.display = 'none';
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function spawnCoins() {
+            const newCoins = [];
+            for (let i = 0; i < 12; i++) {
+                newCoins.push({
+                    x: Math.random() * (canvas.width - 40) + 20,
+                    y: Math.random() * (canvas.height - 100) + 50,
+                    radius: 12,
+                    collected: false,
+                    spin: 0
+                });
+            }
+            return newCoins;
+        }
+
+        function drawWall() {
+            ctx.fillStyle = '#8b7355';
+            ctx.fillRect(50, 0, canvas.width - 100, canvas.height);
+            
+            // Footholds
+            for (let i = 0; i < 20; i++) {
+                const x = 100 + Math.sin(i) * 100;
+                const y = i * (canvas.height / 20);
+                ctx.fillStyle = i % 2 === 0 ? '#ff6b6b' : '#4ecdc4';
+                ctx.beginPath();
+                ctx.arc(x, y, 15, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function drawAvatar(x, y) {
+            if (!currentAvatar) return;
+            const avatar = avatars[currentAvatar];
+            
+            // Body
+            ctx.fillStyle = avatar.color;
+            ctx.beginPath();
+            ctx.arc(x, y, 20, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Eyes
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.arc(x - 6, y - 5, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x + 6, y - 5, 5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawCoins() {
+            coins.forEach(coin => {
+                if (coin.collected) return;
+                
+                coin.spin += 0.1;
+                ctx.save();
+                ctx.translate(coin.x, coin.y);
+                ctx.rotate(coin.spin);
+                ctx.fillStyle = '#ffdd00';
+                ctx.beginPath();
+                ctx.arc(0, 0, coin.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#ffa500';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.restore();
             });
         }
-    </script>
 
-    <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
-
-        function SocialClimber() {
-            const containerRef = useRef(null);
-            const sceneRef = useRef(null);
-            const cameraRef = useRef(null);
-            const rendererRef = useRef(null);
-            const avatarRef = useRef(null);
-            const coinsRef = useRef([]);
-            const particlesRef = useRef([]);
-
-            const [score, setScore] = useState(0);
-            const [selectedAvatar, setSelectedAvatar] = useState('monkey');
-            const [gameStarted, setGameStarted] = useState(false);
-            const [currentHeight, setCurrentHeight] = useState(0);
-            const [maxHeight, setMaxHeight] = useState(0);
-
-            const avatarConfigs = {
-                monkey: { color: 0xd4a574, speed: 0.08, description: '🐵 Monkey - Fast climber' },
-                cat: { color: 0xffa500, speed: 0.05, description: '🐱 Cat - Agile climber' },
-                dog: { color: 0x8b4513, speed: 0.06, description: '🐶 Dog - Loyal climber' },
-                cheetah: { color: 0xffcc00, speed: 0.12, description: '🐆 Cheetah - Speed demon' }
-            };
-
-            useEffect(() => {
-                if (!gameStarted || !containerRef.current) return;
-
-                const scene = new THREE.Scene();
-                scene.background = new THREE.Color(0x87ceeb);
-                sceneRef.current = scene;
-
-                const camera = new THREE.PerspectiveCamera(
-                    75,
-                    window.innerWidth / window.innerHeight,
-                    0.1,
-                    1000
-                );
-                camera.position.set(0, 0, 5);
-                cameraRef.current = camera;
-
-                const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-                renderer.setSize(window.innerWidth, window.innerHeight);
-                renderer.setPixelRatio(window.devicePixelRatio);
-                renderer.shadowMap.enabled = true;
-                containerRef.current.appendChild(renderer.domElement);
-                rendererRef.current = renderer;
-
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-                scene.add(ambientLight);
-
-                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-                directionalLight.position.set(5, 10, 5);
-                directionalLight.castShadow = true;
-                scene.add(directionalLight);
-
-                const wallGeometry = new THREE.BoxGeometry(8, 20, 0.5);
-                const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x8b7355 });
-                const wall = new THREE.Mesh(wallGeometry, wallMaterial);
-                wall.position.z = -2;
-                wall.receiveShadow = true;
-                scene.add(wall);
-
-                for (let i = 0; i < 15; i++) {
-                    const holderGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 16);
-                    const holderMaterial = new THREE.MeshStandardMaterial({
-                        color: Math.random() > 0.5 ? 0xff6b6b : 0x4ecdc4,
-                        metalness: 0.3,
-                        roughness: 0.4
-                    });
-                    const holder = new THREE.Mesh(holderGeometry, holderMaterial);
-                    holder.position.set(
-                        (Math.random() - 0.5) * 6,
-                        -8 + i * 1.5,
-                        -1.7
-                    );
-                    holder.castShadow = true;
-                    scene.add(holder);
-                }
-
-                const avatarGroup = new THREE.Group();
-
-                const bodyGeometry = new THREE.SphereGeometry(0.4, 16, 16);
-                const bodyMaterial = new THREE.MeshStandardMaterial({
-                    color: avatarConfigs[selectedAvatar].color,
-                    metalness: 0.2,
-                    roughness: 0.6
-                });
-                const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-                body.castShadow = true;
-                avatarGroup.add(body);
-
-                const eyeGeometry = new THREE.SphereGeometry(0.1, 8, 8);
-                const eyeMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 });
-                const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-                leftEye.position.set(-0.12, 0.15, 0.35);
-                const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-                rightEye.position.set(0.12, 0.15, 0.35);
-                avatarGroup.add(leftEye);
-                avatarGroup.add(rightEye);
-
-                avatarGroup.position.y = -8;
-                avatarGroup.castShadow = true;
-                scene.add(avatarGroup);
-                avatarRef.current = {
-                    group: avatarGroup,
-                    velocity: 0,
-                    config: avatarConfigs[selectedAvatar]
-                };
-
-                const spawnCoins = () => {
-                    coinsRef.current.forEach(c => scene.remove(c));
-                    coinsRef.current = [];
-
-                    for (let i = 0; i < 10; i++) {
-                        const coinGeometry = new THREE.CylinderGeometry(0.25, 0.25, 0.05, 16);
-                        const coinMaterial = new THREE.MeshStandardMaterial({
-                            color: 0xffdd00,
-                            metalness: 0.8,
-                            roughness: 0.2
-                        });
-                        const coin = new THREE.Mesh(coinGeometry, coinMaterial);
-                        coin.position.set(
-                            (Math.random() - 0.5) * 6,
-                            -8 + Math.random() * 16,
-                            -1.5
-                        );
-                        coin.castShadow = true;
-                        coin.collected = false;
-                        scene.add(coin);
-                        coinsRef.current.push(coin);
-                    }
-                };
-                spawnCoins();
-
-                let alpha = 0, beta = 0;
-                const handleOrientation = (event) => {
-                    alpha = event.alpha || 0;
-                    beta = event.beta || 0;
-                };
-                window.addEventListener('deviceorientation', handleOrientation);
-
-                let isClimbing = false;
-                const handlePointerDown = () => { isClimbing = true; };
-                const handlePointerUp = () => { isClimbing = false; };
-                renderer.domElement.addEventListener('pointerdown', handlePointerDown);
-                renderer.domElement.addEventListener('pointerup', handlePointerUp);
-
-                const handleResize = () => {
-                    camera.aspect = window.innerWidth / window.innerHeight;
-                    camera.updateProjectionMatrix();
-                    renderer.setSize(window.innerWidth, window.innerHeight);
-                };
-                window.addEventListener('resize', handleResize);
-
-                let animationFrameId;
-                const animate = () => {
-                    animationFrameId = requestAnimationFrame(animate);
-
-                    if (avatarRef.current) {
-                        const avatar = avatarRef.current;
-
-                        const climbAccel = isClimbing ? 0.15 : 0.08;
-                        avatar.velocity = Math.min(avatar.velocity + climbAccel, avatar.config.speed);
-                        avatar.group.position.y += avatar.velocity;
-
-                        const height = Math.max(0, Math.floor((avatar.group.position.y + 8) * 2));
-                        setCurrentHeight(height);
-                        setMaxHeight(prev => Math.max(prev, height));
-
-                        if (avatar.group.position.y > 10) {
-                            avatar.group.position.y = -8;
-                            avatar.velocity = 0;
-                            setScore(prev => prev + 50);
-                        }
-
-                        coinsRef.current.forEach(coin => {
-                            coin.rotation.x += 0.05;
-                            coin.rotation.y += 0.1;
-
-                            const dist = avatar.group.position.distanceTo(coin.position);
-                            if (dist < 0.8 && !coin.collected) {
-                                coin.collected = true;
-                                scene.remove(coin);
-                                setScore(prev => prev + 10);
-
-                                for (let i = 0; i < 5; i++) {
-                                    const particle = new THREE.Mesh(
-                                        new THREE.SphereGeometry(0.05, 4, 4),
-                                        new THREE.MeshBasicMaterial({ color: 0xffdd00 })
-                                    );
-                                    particle.position.copy(coin.position);
-                                    particle.velocity = new THREE.Vector3(
-                                        (Math.random() - 0.5) * 0.3,
-                                        Math.random() * 0.2,
-                                        (Math.random() - 0.5) * 0.3
-                                    );
-                                    particle.life = 30;
-                                    scene.add(particle);
-                                    particlesRef.current.push(particle);
-                                }
-                            }
-                        });
-
-                        particlesRef.current = particlesRef.current.filter(p => {
-                            p.position.add(p.velocity);
-                            p.life--;
-                            if (p.life <= 0) {
-                                scene.remove(p);
-                                return false;
-                            }
-                            return true;
-                        });
-
-                        camera.position.x = (beta - 45) * 0.02;
-                        camera.position.y = avatar.group.position.y + 2;
-                        camera.lookAt(avatar.group.position);
-                    }
-
-                    renderer.render(scene, camera);
-                };
-                animate();
-
-                return () => {
-                    cancelAnimationFrame(animationFrameId);
-                    window.removeEventListener('deviceorientation', handleOrientation);
-                    window.removeEventListener('resize', handleResize);
-                    renderer.domElement.removeEventListener('pointerdown', handlePointerDown);
-                    renderer.domElement.removeEventListener('pointerup', handlePointerUp);
-                    renderer.dispose();
-                    if (containerRef.current?.contains(renderer.domElement)) {
-                        containerRef.current.removeChild(renderer.domElement);
-                    }
-                };
-            }, [gameStarted, selectedAvatar]);
-
-            const startGame = (avatar) => {
-                setSelectedAvatar(avatar);
-                setGameStarted(true);
-                setScore(0);
-                setCurrentHeight(0);
-                setMaxHeight(0);
-            };
-
-            if (!gameStarted) {
-                return (
-                    <div style={{
-                        width: '100%',
-                        height: '100vh',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                        color: 'white',
-                        padding: '20px'
-                    }}>
-                        <h1 style={{ fontSize: '48px', marginBottom: '10px', textShadow: '2px 2px 4px rgba(0,0,0,0.3)' }}>
-                            🧗 Social Climber
-                        </h1>
-                        <p style={{ fontSize: '18px', marginBottom: '40px', opacity: 0.9 }}>
-                            Pick your avatar and climb to the top!
-                        </p>
-
-                        <div style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(2, 1fr)',
-                            gap: '20px',
-                            marginBottom: '30px',
-                            maxWidth: '400px'
-                        }}>
-                            {Object.entries(avatarConfigs).map(([key, config]) => (
-                                <button
-                                    key={key}
-                                    onClick={() => startGame(key)}
-                                    style={{
-                                        padding: '20px',
-                                        fontSize: '16px',
-                                        background: `linear-gradient(135deg, #${config.color.toString(16).padStart(6, '0')}, rgba(255,255,255,0.2))`,
-                                        border: '3px solid white',
-                                        borderRadius: '12px',
-                                        color: 'white',
-                                        cursor: 'pointer',
-                                        fontWeight: 'bold',
-                                        transition: 'transform 0.2s',
-                                        boxShadow: '0 4px 15px rgba(0,0,0,0.2)'
-                                    }}
-                                    onMouseEnter={(e) => e.target.style.transform = 'scale(1.05)'}
-                                    onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
-                                >
-                                    {config.description}
-                                </button>
-                            ))}
-                        </div>
-
-                        <p style={{ fontSize: '14px', opacity: 0.8, textAlign: 'center', maxWidth: '300px' }}>
-                            💡 Tap and hold to climb faster • Collect coins! 🪙
-                        </p>
-                    </div>
-                );
-            }
-
-            return (
-                <div style={{ width: '100%', height: '100vh', overflow: 'hidden', position: 'relative' }}>
-                    <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-
-                    <div style={{
-                        position: 'absolute',
-                        top: '20px',
-                        left: '20px',
-                        color: 'white',
-                        fontSize: '24px',
-                        fontWeight: 'bold',
-                        textShadow: '2px 2px 4px rgba(0,0,0,0.5)',
-                        zIndex: 10
-                    }}>
-                        <div>💰 Score: {score}</div>
-                        <div style={{ marginTop: '10px', fontSize: '18px' }}>
-                            📈 Height: {currentHeight}m<br/>
-                            🏆 Max: {maxHeight}m
-                        </div>
-                    </div>
-
-                    <button
-                        onClick={() => setGameStarted(false)}
-                        style={{
-                            position: 'absolute',
-                            top: '20px',
-                            right: '20px',
-                            padding: '12px 20px',
-                            fontSize: '16px',
-                            background: 'rgba(255, 107, 107, 0.8)',
-                            border: '2px solid white',
-                            borderRadius: '8px',
-                            color: 'white',
-                            cursor: 'pointer',
-                            fontWeight: 'bold',
-                            zIndex: 10
-                        }}
-                    >
-                        Back
-                    </button>
-
-                    <div style={{
-                        position: 'absolute',
-                        bottom: '30px',
-                        left: '50%',
-                        transform: 'translateX(-50%)',
-                        padding: '15px 30px',
-                        background: 'rgba(0, 0, 0, 0.6)',
-                        color: 'white',
-                        borderRadius: '20px',
-                        fontSize: '16px',
-                        zIndex: 10
-                    }}>
-                        👆 Tap and hold to climb!
-                    </div>
-                </div>
-            );
+        function drawParticles() {
+            particles = particles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life--;
+                
+                ctx.fillStyle = `rgba(255, 221, 0, ${p.life / 30})`;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+                ctx.fill();
+                
+                return p.life > 0;
+            });
         }
 
-        ReactDOM.createRoot(document.getElementById('root')).render(<SocialClimber />);
+        function checkCoinCollision() {
+            const avatarX = canvas.width / 2;
+            coins.forEach(coin => {
+                if (coin.collected) return;
+                const dist = Math.sqrt(Math.pow(avatarX - coin.x, 2) + Math.pow(avatarY - coin.y, 2));
+                if (dist < 40) {
+                    coin.collected = true;
+                    score += 10;
+                    
+                    // Particles
+                    for (let i = 0; i < 8; i++) {
+                        particles.push({
+                            x: coin.x,
+                            y: coin.y,
+                            vx: (Math.random() - 0.5) * 4,
+                            vy: (Math.random() - 0.5) * 4,
+                            life: 30
+                        });
+                    }
+                }
+            });
+        }
+
+        function animate() {
+            if (!gameStarted) return;
+
+            // Clear
+            ctx.fillStyle = '#87ceeb';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw wall
+            drawWall();
+
+            // Climbing physics
+            const accel = isClimbing ? 0.18 : 0.10;
+            avatarVelocity = Math.min(avatarVelocity + accel, avatars[currentAvatar].speed);
+            avatarY -= avatarVelocity;
+
+            // Update height
+            currentHeight = Math.max(0, Math.floor((canvas.height / 2 - avatarY) / 10));
+            if (currentHeight > maxHeight) maxHeight = currentHeight;
+
+            // Check if reached top
+            if (avatarY < 50) {
+                score += 50;
+                avatarY = canvas.height / 2;
+                avatarVelocity = 0;
+                coins = spawnCoins();
+            }
+
+            // Check if fell off bottom
+            if (avatarY > canvas.height) {
+                avatarY = canvas.height / 2;
+                avatarVelocity = 0;
+            }
+
+            // Draw avatar
+            drawAvatar(canvas.width / 2, avatarY);
+
+            // Coins & particles
+            drawCoins();
+            checkCoinCollision();
+            drawParticles();
+
+            // Update HUD
+            scoreEl.textContent = score;
+            heightEl.textContent = currentHeight;
+            maxHeightEl.textContent = maxHeight;
+
+            requestAnimationFrame(animate);
+        }
     </script>
 </body>
 </html>
