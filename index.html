@@ -87,10 +87,68 @@
             canvas.height = window.innerHeight;
         });
 
-        canvas.addEventListener('pointerdown', () => { isClimbing = true; });
-        canvas.addEventListener('pointerup', () => { isClimbing = false; });
-        canvas.addEventListener('touchstart', () => { isClimbing = true; });
-        canvas.addEventListener('touchend', () => { isClimbing = false; });
+        let draggedCoin = null;
+
+        function getCoords(e) {
+            const rect = canvas.getBoundingClientRect();
+            let x, y;
+            if (e.touches) {
+                x = e.touches[0].clientX - rect.left;
+                y = e.touches[0].clientY - rect.top;
+            } else {
+                x = e.clientX - rect.left;
+                y = e.clientY - rect.top;
+            }
+            return { x: x * (canvas.width / rect.width), y: y * (canvas.height / rect.height) };
+        }
+
+        function checkCoinClick(x, y) {
+            for (let coin of coins) {
+                if (coin.collected) continue;
+                const dist = Math.sqrt(Math.pow(x - coin.x, 2) + Math.pow(y - coin.y, 2));
+                if (dist < 40) return coin;
+            }
+            return null;
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            const coords = getCoords(e);
+            draggedCoin = checkCoinClick(coords.x, coords.y);
+            if (!draggedCoin) isClimbing = true;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!draggedCoin) return;
+            const coords = getCoords(e);
+            draggedCoin.x = coords.x;
+            draggedCoin.y = coords.y;
+        });
+
+        canvas.addEventListener('mouseup', () => { 
+            draggedCoin = null;
+            isClimbing = false; 
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const coords = getCoords(e);
+            draggedCoin = checkCoinClick(coords.x, coords.y);
+            if (!draggedCoin) isClimbing = true;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (!draggedCoin) return;
+            const coords = getCoords(e);
+            draggedCoin.x = coords.x;
+            draggedCoin.y = coords.y;
+        });
+
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            draggedCoin = null;
+            isClimbing = false;
+        });
 
         function startGame(avatar) {
             gameStarted = true;
