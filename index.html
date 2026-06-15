@@ -114,7 +114,25 @@
         canvas.addEventListener('mousedown', (e) => {
             const coords = getCoords(e);
             draggedCoin = checkCoinClick(coords.x, coords.y);
-            if (!draggedCoin) isClimbing = true;
+            if (draggedCoin) {
+                if (draggedCoin.type === 'danger') {
+                    score = Math.max(0, score - 10);
+                    draggedCoin.collected = true;
+                    draggedCoin = null;
+                    // Spawn danger particles
+                    for (let i = 0; i < 5; i++) {
+                        particles.push({
+                            x: draggedCoin.x,
+                            y: draggedCoin.y,
+                            vx: (Math.random() - 0.5) * 6,
+                            vy: (Math.random() - 0.5) * 6,
+                            life: 20
+                        });
+                    }
+                }
+            } else {
+                isClimbing = true;
+            }
         });
 
         canvas.addEventListener('mousemove', (e) => {
@@ -133,7 +151,15 @@
             e.preventDefault();
             const coords = getCoords(e);
             draggedCoin = checkCoinClick(coords.x, coords.y);
-            if (!draggedCoin) isClimbing = true;
+            if (draggedCoin) {
+                if (draggedCoin.type === 'danger') {
+                    score = Math.max(0, score - 10);
+                    draggedCoin.collected = true;
+                    draggedCoin = null;
+                }
+            } else {
+                isClimbing = true;
+            }
         });
 
         canvas.addEventListener('touchmove', (e) => {
@@ -176,12 +202,15 @@
         function spawnCoins() {
             const newCoins = [];
             for (let i = 0; i < 12; i++) {
+                const type = Math.random() > 0.6 ? 'danger' : 'gold';
                 newCoins.push({
                     x: Math.random() * (canvas.width - 40) + 20,
                     y: Math.random() * (canvas.height - 100) + 50,
                     radius: 12,
                     collected: false,
-                    spin: 0
+                    spin: 0,
+                    type: type,
+                    color: type === 'danger' ? '#4ecdc4' : '#ffdd00'
                 });
             }
             return newCoins;
@@ -230,13 +259,25 @@
                 ctx.save();
                 ctx.translate(coin.x, coin.y);
                 ctx.rotate(coin.spin);
-                ctx.fillStyle = '#ffdd00';
+                ctx.fillStyle = coin.color;
                 ctx.beginPath();
                 ctx.arc(0, 0, coin.radius, 0, Math.PI * 2);
                 ctx.fill();
-                ctx.strokeStyle = '#ffa500';
-                ctx.lineWidth = 2;
-                ctx.stroke();
+                
+                if (coin.type === 'danger') {
+                    ctx.strokeStyle = '#ff0000';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 10px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('!', 0, 0);
+                } else {
+                    ctx.strokeStyle = '#ffa500';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
                 ctx.restore();
             });
         }
